@@ -1,0 +1,37 @@
+{
+  "manifest_version": 2,
+  "name": "TradingView Finviz Industry Ranks",
+  "version": "0.1.0",
+  "description": "On TradingView, show the stock's Finviz industry and its 1D/1W/1M/3M/6M performance ranks among industries.",
+  "permissions": [
+    "storage",
+    "webRequest",
+    "tabs",
+    "https://scanner.tradingview.com/*",
+    "https://finviz.com/*",
+    "https://*.finviz.com/*"
+  ],
+  "background": {
+    "scripts": ["src/background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.tradingview.com/*"
+      ],
+      "js": ["src/contentScript.js"],
+      "css": ["src/contentStyles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "48": "assets/icon-48.png",
+    "96": "assets/icon-96.png"
+  },
+  "browser_action": {
+    "default_title": "TradingView Finviz Industry Ranks"
+  },
+  "web_accessible_resources": [
+    "src/pageHook.js"
+  ]
+}

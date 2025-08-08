@@ -1,0 +1,79 @@
+/* Minimal, unobtrusive floating widget */
+
+#tv-finviz-industry-widget.tvfvz-root {
+  position: fixed;
+  z-index: 2147483646; /* Above chart tooltips but below menus */
+  right: 10px;
+  bottom: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  color: var(--tvfvz-fg, #e6e6e6);
+  pointer-events: none; /* don't block page interactions outside frame */
+}
+
+.tvfvz-frame {
+  background: rgba(20, 20, 25, 0.88);
+  backdrop-filter: saturate(120%) blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+  padding: 8px 10px;
+  min-width: 240px;
+  max-width: 320px;
+  pointer-events: auto; /* allow interaction within widget */
+}
+
+.tvfvz-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  cursor: move;
+  user-select: none;
+}
+
+.tvfvz-badge {
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #a2b2ff;
+  border: 1px solid rgba(162,178,255,0.3);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+.tvfvz-toggle {
+  background: transparent;
+  color: #9aa0a6;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.tvfvz-body { font-size: 12px; }
+
+.tvfvz-title { margin-bottom: 6px; opacity: 0.95; }
+.tvfvz-pill { font-weight: 600; }
+.tvfvz-sep { opacity: 0.5; margin: 0 6px; }
+.tvfvz-industry { opacity: 0.9; }
+
+.tvfvz-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.tvfvz-metric {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+.tvfvz-k { opacity: 0.75; font-weight: 600; }
+.tvfvz-v { opacity: 0.85; }
+.tvfvz-p { font-variant-numeric: tabular-nums; }
+.tvfvz-pos { color: #31c48d; }
+.tvfvz-neg { color: #e85d75; }
+
+.tvfvz-collapsed .tvfvz-body {
+  display: none;
+}
