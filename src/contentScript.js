@@ -1,11 +1,14 @@
 // Content script injected on TradingView to display Finviz industry ranks
 
 const WIDGET_ID = 'tv-finviz-industry-widget';
+const EMBED_ID = 'tv-finviz-industry-embedded';
 let lastSymbol = null;
 let loading = false;
 let pendingTimer = null;
 let pollTimer = null;
 let overrideSymbol = null;
+let displayMode = 'embedded';
+let lastModel = null;
 
 init();
 
@@ -13,7 +16,7 @@ function init() {
   // Only run widget logic in top frame
   if (window.top !== window) return;
   // Initial run and then observe SPA URL/symbol changes
-  tick();
+  loadSettings().then(() => tick());
   observeUrlChanges();
   installNetworkSniffer();
   injectPageHook();
@@ -26,6 +29,28 @@ function init() {
   }, false);
 }
 // End init
+
+function loadSettings() {
+  try {
+    const s = (browser && browser.storage && browser.storage.local) ? browser.storage.local : null;
+    if (!s) return Promise.resolve();
+    return s.get('displayMode').then((res) => {
+      displayMode = (res && res.displayMode) ? String(res.displayMode) : 'embedded';
+      // React to runtime changes
+      try {
+        browser.storage.onChanged.addListener((changes, area) => {
+          if (area === 'local' && changes.displayMode) {
+            displayMode = changes.displayMode.newValue || 'embedded';
+            // Re-render the current model in the new mode
+            if (lastModel) scheduleRenderImmediate();
+          }
+        });
+      } catch {}
+    });
+  } catch {
+    return Promise.resolve();
+  }
+}
 
 function observeUrlChanges() {
   const onChange = () => scheduleTick(100);
@@ -243,6 +268,17 @@ function injectPageHook() {
 }
 
 function renderWidget(model) {
+  lastModel = model;
+  if (displayMode === 'embedded') {
+    removeFloatingRoot();
+    renderEmbedded(model);
+  } else {
+    removeEmbeddedRoot();
+    renderFloating(model);
+  }
+}
+
+function renderFloating(model) {
   let root = document.getElementById(WIDGET_ID);
   if (!root) {
     root = document.createElement('div');
@@ -293,6 +329,282 @@ function renderWidget(model) {
   attachHandlers(root);
 }
 
+function renderEmbedded(model) {
+  const compact = localStorage.getItem('tvfvz-collapsed') === '1';
+
+  // Prefer to insert as a sibling before the Key Stats panel wrapper identified by 'details-key-stats'
+  const keyStatsEl = findDetailsKeyStatsPanel();
+  if (!keyStatsEl || !keyStatsEl.parentElement) {
+    // Retry shortly; TradingView UI can be async
+    setTimeout(() => { if (lastModel && displayMode === 'embedded') renderEmbedded(lastModel); }, 500);
+    return;
+  }
+
+  const anchor = keyStatsEl;
+  const parentForInsert = keyStatsEl.parentElement;
+
+  let root = document.getElementById(EMBED_ID);
+  if (!root) {
+    root = document.createElement('div');
+    root.id = EMBED_ID;
+    root.className = 'tvfvz-embedded-root';
+  }
+  // Ensure it's positioned before the Key Stats panel block
+  try {
+    const needsInsert = !root.parentNode || root.parentNode !== parentForInsert || (anchor.previousSibling !== root);
+    if (needsInsert) {
+      if (root.parentNode) root.parentNode.removeChild(root);
+      parentForInsert.insertBefore(root, anchor);
+    }
+  } catch {
+    try {
+      if (root.parentNode) root.parentNode.removeChild(root);
+      parentForInsert.insertBefore(root, anchor);
+    } catch {}
+  }
+
+  // Ensure a separator is placed after our panel for spacing
+  try { ensureSeparatorAfter(root, parentForInsert, anchor); } catch {}
+  // Build a native-like panel by copying classes from Key Stats
+  const mimic = sniffDetailsKeyStatsClasses(keyStatsEl);
+
+  if (model.state === 'loading') {
+    root.className = `tvfvz-embedded-root ${mimic.panelClass}`.trim();
+    root.innerHTML = `${sectionHeaderHtml('Industry Performance', mimic)}
+      <div class="tvfvz-panel-list"><div class="tvfvz-panel-row">Loading ${escapeHtml(model.symbol)}…</div></div>`;
+    return;
+  }
+  if (model.state === 'error') {
+    root.className = `tvfvz-embedded-root ${mimic.panelClass}`.trim();
+    const msg = `No data${model.error ? ` (${escapeHtml(model.error)})` : ''}`;
+    root.innerHTML = `${sectionHeaderHtml('Industry Performance', mimic)}
+      <div class="tvfvz-panel-list"><div class="tvfvz-panel-row">${msg}</div></div>`;
+    return;
+  }
+  if (model.state === 'idle') {
+    root.className = `tvfvz-embedded-root ${mimic.panelClass}`.trim();
+    const msg = model.note || '';
+    root.innerHTML = `${sectionHeaderHtml('Industry Performance', mimic)}
+      <div class="tvfvz-panel-list"><div class="tvfvz-panel-row">${escapeHtml(msg)}</div></div>`;
+    return;
+  }
+
+  const { symbol, industry, ranks, values, total } = model;
+  const pos = (k) => ranks[k] ? `#${ranks[k]} / ${total}` : '—';
+  const val = (k) => values[k] == null ? '' : `${values[k] > 0 ? '+' : ''}${values[k].toFixed(2)}%`;
+
+  const row = (label) => `
+    <div class="tvfvz-panel-row">
+      <span class="tvfvz-k">${label}</span>
+      <span class="tvfvz-v">${pos(label)}</span>
+      <span class="tvfvz-p ${values[label] < 0 ? 'tvfvz-neg' : 'tvfvz-pos'}">${val(label)}</span>
+    </div>`;
+
+  root.className = `tvfvz-embedded-root ${mimic.panelClass}`.trim();
+  root.innerHTML = `${sectionHeaderHtml('Industry Performance', mimic)}
+    <div class="tvfvz-panel-list">
+      ${row('1D')}
+      ${row('1W')}
+      ${row('1M')}
+      ${row('3M')}
+      ${row('6M')}
+    </div>`;
+}
+
+function removeFloatingRoot() {
+  const root = document.getElementById(WIDGET_ID);
+  if (root && root.parentNode) root.parentNode.removeChild(root);
+}
+
+function removeEmbeddedRoot() {
+  const root = document.getElementById(EMBED_ID);
+  if (root && root.parentNode) {
+    const parent = root.parentNode;
+    const next = root.nextSibling;
+    parent.removeChild(root);
+    // Remove adjacent separator we may have added
+    if (next && next.nodeType === 1 && next.classList && next.classList.contains('separator-BSF4XTsE')) {
+      try { parent.removeChild(next); } catch {}
+    }
+  }
+}
+
+function scheduleRenderImmediate() {
+  if (!lastModel) return;
+  renderWidget(lastModel);
+}
+
+// Old generic injection anchor (kept as fallback)
+function findInjectionAnchor() {
+  const isVisible = (el) => !!(el && el.getClientRects().length && el.offsetParent !== null);
+  const rect = (el) => (el.getBoundingClientRect ? el.getBoundingClientRect() : { top: 0, left: 0 });
+  const scoreBottomRight = (el) => {
+    const r = rect(el);
+    return r.top * 10000 + r.left; // prefer bottom-most, then right-most
+  };
+
+  const normalizeText = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+  const contains = (s, needle) => normalizeText(s).toLowerCase().includes(needle);
+
+  const candidates = Array.from(document.querySelectorAll('h1, h2, h3, header *, [data-name], [class], div, span, p, a, td, th, li'))
+    .filter(isVisible)
+    .map(el => ({ el, txt: normalizeText(el.textContent || '') }))
+    .filter(x => x.txt && x.txt.length >= 6);
+
+  // 1) Prefer the Key Stats -> Next earnings report row
+  const earningsLabels = candidates.filter(x => contains(x.txt, 'next earnings'))
+    .sort((a, b) => scoreBottomRight(b.el) - scoreBottomRight(a.el));
+  for (const cand of earningsLabels) {
+    // Ensure it's under a Key Stats section if possible
+    const section = cand.el.closest('section, div, table, ul, ol');
+    const sectionText = section ? normalizeText(section.textContent || '') : '';
+    if (!section || /key\s*stats/i.test(sectionText) || /key\s*statistics/i.test(sectionText)) {
+      // Insert after the row containing this label
+      const row = cand.el.closest('tr, li, [role="row"], [class*="row"], div');
+      if (row && row.parentNode) return row;
+      return cand.el;
+    }
+  }
+
+  // 3) Known containers
+  const header = document.querySelector('[data-name="symbol-header"], [data-name*="symbol"], [class*="symbol"][class*="header"], header');
+  if (header) return header;
+
+  // 4) Fallback to bottom-right-most visible block
+  const blocks = Array.from(document.querySelectorAll('div, section, header')).filter(isVisible);
+  blocks.sort((a, b) => scoreBottomRight(b) - scoreBottomRight(a));
+  return blocks[0] || null;
+}
+
+function chooseEmbeddedVariant(anchor) {
+  try {
+    if (!anchor) return 'inline';
+    const rowLike = anchor.closest && anchor.closest('tr, li, [role="row"], [class*="row"], table, ul, ol');
+    return rowLike ? 'block' : 'inline';
+  } catch { return 'inline'; }
+}
+
+function findKeyStatsPanelAndContainer() {
+  // 1) Try heading match
+  const head = findElementByText(/\bkey\s*stat(s|istics)?\b/i);
+  if (head) {
+    const panel = findPanelWrapperFromHeading(head);
+    if (panel && panel.parentElement) return { panel, parent: panel.parentElement };
+  }
+  // 2) Fallback: a known row like "Next earnings" and infer panel
+  const row = findElementByText(/next\s+earnings/i);
+  if (row) {
+    const panel = findPanelWrapperFromRow(row);
+    if (panel && panel.parentElement) return { panel, parent: panel.parentElement };
+  }
+  // 3) As a last resort, fallback to previous generic anchor and insert after it
+  const generic = findInjectionAnchor();
+  if (generic && generic.parentElement) return { panel: generic.nextSibling, parent: generic.parentElement };
+  return null;
+}
+
+function renderEmbeddedSectionHeader() {
+  return '<div class="tvfvz-section-title">Industry Performance</div>';
+}
+
+function findElementByText(re) {
+  try {
+    const isVisible = (el) => !!(el && el.getClientRects().length && el.offsetParent !== null);
+    const nodes = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, span, div, p, a, li, td, th'))
+      .filter(isVisible)
+      .filter(el => re.test((el.textContent || '').trim()));
+    // Choose the bottom-right-most match to bias towards the lower details panel
+    nodes.sort((a, b) => {
+      const ra = a.getBoundingClientRect();
+      const rb = b.getBoundingClientRect();
+      return (rb.top * 10000 + rb.left) - (ra.top * 10000 + ra.left);
+    });
+    return nodes[0] || null;
+  } catch { return null; }
+}
+
+function findPanelWrapperFromHeading(headingEl) {
+  try {
+    const rowSelector = 'tr, li, [role="row"], [class*="row"]';
+    let node = headingEl;
+    for (let i = 0; i < 8 && node && node.parentElement; i++) {
+      const cand = node.parentElement;
+      // candidate must contain the heading and have a list of rows after it
+      const hasRows = cand.querySelector(rowSelector);
+      if (hasRows) return cand;
+      node = cand;
+    }
+    return headingEl.parentElement || headingEl;
+  } catch { return headingEl; }
+}
+
+function findPanelWrapperFromRow(rowEl) {
+  try {
+    let node = rowEl;
+    for (let i = 0; i < 8 && node && node.parentElement; i++) {
+      const cand = node.parentElement;
+      const hasHeading = cand.querySelector('h1,h2,h3,h4,[role="heading"]');
+      const manyRows = cand.querySelectorAll('tr, li, [role="row"], [class*="row"]').length >= 3;
+      if (manyRows && hasHeading) return cand;
+      node = cand;
+    }
+    return rowEl.parentElement || rowEl;
+  } catch { return rowEl; }
+}
+
+// Note: no longer escalating to a higher container; we insert before the Key Stats panel in its immediate parent
+
+function sectionHeaderHtml(text, mimic) {
+  const tag = (mimic && mimic.headingTag) || 'h3';
+  const cls = (mimic && mimic.headingClass) ? ` ${mimic.headingClass}` : '';
+  return `<${tag} class="tvfvz-section-title${cls}">${escapeHtml(text)}</${tag}>`;
+}
+
+function ensureSeparatorAfter(root, parent, beforeNode) {
+  if (!root || !parent || !beforeNode) return;
+  const next = root.nextSibling;
+  if (next && next.nodeType === 1 && next.classList && next.classList.contains('separator-BSF4XTsE')) return;
+  const sep = document.createElement('div');
+  sep.className = 'separator-BSF4XTsE';
+  parent.insertBefore(sep, beforeNode);
+}
+
+function findDetailsKeyStatsPanel() {
+  const selectors = [
+    '#details-key-stats',
+    '.details-key-stats',
+    '[data-name="details-key-stats"]',
+    '[data-widget="details-key-stats"]',
+    '[id*="details-key-stats"]',
+    '[class*="details-key-stats"]'
+  ];
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    if (el && el.offsetParent !== null) return el;
+  }
+  // Fallback to heading-based search
+  const head = findElementByText(/\bkey\s*stat(s|istics)?\b/i);
+  if (head) return findPanelWrapperFromHeading(head);
+  // Fallback to earnings row
+  const row = findElementByText(/next\s+earnings/i);
+  if (row) return findPanelWrapperFromRow(row);
+  return null;
+}
+
+function sniffDetailsKeyStatsClasses(panelEl) {
+  try {
+    // Use the panel's own class to mimic card/frame visuals
+    const panelClass = (panelEl && panelEl.className) ? panelEl.className : '';
+    // Use the heading tag/class inside panel
+    const head = panelEl.querySelector('h1, h2, h3, h4, [role="heading"]');
+    const headingTag = head ? head.tagName.toLowerCase() : 'h3';
+    const headingClass = head ? head.className : '';
+    return { panelClass, headingTag, headingClass };
+  } catch {
+    return { panelClass: '', headingTag: 'h3', headingClass: '' };
+  }
+}
+
 function widgetShell(compact, innerHtml) {
   return `
     <div class="tvfvz-frame ${compact ? 'tvfvz-collapsed' : ''}">
@@ -329,9 +641,10 @@ function attachHandlers(root) {
     });
   }
 
-  // Dragging support on header (ignore clicks on toggle)
+  // Dragging support on header (ignore clicks on toggle) - only in floating mode
   const header = root.querySelector('.tvfvz-header');
-  if (header) {
+  const isEmbedded = root.id === EMBED_ID || root.classList.contains('tvfvz-embedded-root') || root.closest && root.closest('.tvfvz-embedded-root');
+  if (header && !isEmbedded) {
     let dragging = false;
     let sx = 0, sy = 0, startLeft = 0, startTop = 0;
 

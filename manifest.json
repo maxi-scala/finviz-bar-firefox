@@ -25,11 +25,12 @@
     }
   ],
   "icons": {
-    "48": "assets/icon-48.png",
-    "96": "assets/icon-96.png"
+    "48": "assets/favicon.png",
+    "96": "assets/favicon.png"
   },
   "browser_action": {
-    "default_title": "TradingView Finviz Industry Ranks"
+    "default_title": "TradingView Finviz Industry Ranks",
+    "default_popup": "src/popup.html"
   },
   "web_accessible_resources": [
     "src/pageHook.js"

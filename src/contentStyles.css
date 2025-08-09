@@ -77,3 +77,93 @@
 .tvfvz-collapsed .tvfvz-body {
   display: none;
 }
+
+/* Embedded mode overrides to blend with TradingView UI */
+
+#tv-finviz-industry-embedded.tvfvz-embedded-root {
+  position: static;
+  display: block;
+  margin: 0;
+  color: inherit;
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}
+
+.tvfvz-inline .tvfvz-frame {
+  background: transparent;
+  backdrop-filter: none;
+  border: 0;
+  box-shadow: none;
+  padding: 0 0 0 8px;
+  min-width: 0;
+  max-width: none;
+}
+
+.tvfvz-inline .tvfvz-header {
+  cursor: default;
+  margin-bottom: 2px;
+}
+
+.tvfvz-inline .tvfvz-badge {
+  color: #6b7cff;
+  border-color: rgba(107,124,255,0.35);
+}
+
+.tvfvz-inline .tvfvz-grid {
+  display: inline-grid;
+  grid-template-columns: repeat(5, auto);
+  gap: 6px 10px;
+  align-items: center;
+}
+
+.tvfvz-inline .tvfvz-metric { grid-template-columns: auto auto auto; }
+.tvfvz-inline .tvfvz-title { display: none; }
+.tvfvz-inline .tvfvz-body { font-size: 12px; }
+
+/* Block variant for Key Stats area */
+.tvfvz-block {
+  display: block;
+}
+
+.tvfvz-block .tvfvz-frame {
+  background: transparent;
+  backdrop-filter: none;
+  border: 0;
+  box-shadow: none;
+  padding: 8px 0 0 0;
+  min-width: 0;
+  max-width: none;
+}
+
+.tvfvz-block .tvfvz-header {
+  cursor: default;
+  margin-bottom: 4px;
+}
+
+.tvfvz-block .tvfvz-body { font-size: 12px; }
+
+/* Section heading for embedded Industry Performance */
+.tvfvz-section-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin: 0 0 6px 0;
+  color: inherit;
+}
+
+/* Native-like panel content for embedded mode */
+.tvfvz-panel-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.tvfvz-panel-row {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.tvfvz-panel-row .tvfvz-k { font-weight: 600; opacity: 0.8; }
+.tvfvz-panel-row .tvfvz-v { opacity: 0.85; }
+.tvfvz-panel-row .tvfvz-p { font-variant-numeric: tabular-nums; }
